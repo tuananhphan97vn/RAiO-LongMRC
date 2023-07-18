@@ -21,16 +21,12 @@ FILTERWORD.extend(punctuations)
 if is_torch_available():
 	import torch
 	from torch.utils.data import TensorDataset
-
 if is_tf_available():
 	import tensorflow as tf
-
 logger = logging.get_logger(__name__)
-
 def filter_sent(sent, filter_words):
 	sent = sent.lower()
 	return [ word for word in word_tokenize(sent) if word not in filter_words]
-
 def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer, orig_answer_text):
 	"""Returns tokenized answer spans that better match the annotated answer."""
 	tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
@@ -40,9 +36,7 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer, orig_ans
 			text_span = " ".join(doc_tokens[new_start : (new_end + 1)])
 			if text_span == tok_answer_text:
 				return (new_start, new_end)
-
 	return (input_start, input_end)
-
 def _check_is_max_context(doc_spans, cur_span_index, position):
 	"""Check if this is the 'max context' doc span for the token."""
 	best_score = None
@@ -60,12 +54,10 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
 			best_score = score
 			best_span_index = span_index
 	return cur_span_index == best_span_index
-
 def _is_whitespace(c):
 	if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
 		return True
 	return False
-
 def squad_convert_example_to_features(
 	example, max_seq_length, max_len_context, max_query_length, padding_strategy, is_training
 ):
@@ -98,11 +90,6 @@ def squad_convert_example_to_features(
 		orig_to_tok_index.append(len(all_doc_tokens))
 		if tokenizer.__class__.__name__ in [
 			"RobertaTokenizer",
-			"LongformerTokenizer",
-			"BartTokenizer",
-			"RobertaTokenizerFast",
-			"LongformerTokenizerFast",
-			"BartTokenizerFast",
 		]:
 			sub_tokens = tokenizer.tokenize(token, add_prefix_space=True)
 			for sub_token in sub_tokens:
@@ -111,11 +98,9 @@ def squad_convert_example_to_features(
 			sub_tokens = tokenizer.tokenize(token)
 			for sub_token in sub_tokens:
 				subword2sent.append(word_to_sent_index[i])
-
 		for sub_token in sub_tokens:
 			tok_to_orig_index.append(i)
 			all_doc_tokens.append(sub_token)
-
 	if  is_training and not example.is_impossible:
 		tok_start_position = orig_to_tok_index[example.start_position]
 		if example.end_position < len(example.doc_tokens) - 1:
@@ -133,7 +118,6 @@ def squad_convert_example_to_features(
 		else:
 			sent2subword[subword2sent[i]].append(i)
 	spans = []
-
 	truncated_query = tokenizer.encode(
 		example.question_text, add_special_tokens=False, truncation=True, max_length=max_query_length
 	)
@@ -192,7 +176,6 @@ def squad_convert_example_to_features(
 	if is_training and not example.is_impossible:
 		start_position = tok_start_position + 1 
 		end_position = tok_end_position + 1 
-
 	propose_example = ProposeExample(features , start_position , end_position , all_doc_tokens , tok_to_orig_index , sent2subword , subword2sents)
 	return propose_example
 def squad_convert_example_to_features_init(tokenizer_for_convert: PreTrainedTokenizerBase):
@@ -230,7 +213,6 @@ def squad_convert_examples_to_features(
 				disable=not tqdm_enabled,
 			)
 		)
-
 	new_features = []
 	unique_id = 1000000000
 	example_index = 0
@@ -243,7 +225,6 @@ def squad_convert_examples_to_features(
 		example_feature.example_index = example_index
 		example_feature.unique_id = unique_id
 		new_features.append(example_feature)
-		
 		unique_id += 1
 		example_index += 1
 	features = new_features
@@ -281,39 +262,30 @@ class SquadProcessor(DataProcessor):
 			dataset = dataset["validation"]
 		else:
 			dataset = dataset["train"]
-
 		examples = []
 		for tensor_dict in tqdm(dataset):
 			examples.append(self._get_example_from_tensor_dict(tensor_dict, evaluate=evaluate))
 		return examples
 	def get_train_examples(self, data_dir, filename=None):
-
 		if data_dir is None:
 			data_dir = ""
-
 		if self.train_file is None:
 			raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
-
 		with open(
 			os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
 		) as reader:
 			input_data = json.load(reader)["data"]
 		return self._create_examples(input_data, "train")
-
 	def get_dev_examples(self, data_dir, filename=None):
-
 		if data_dir is None:
 			data_dir = ""
-
 		if self.dev_file is None:
 			raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
-
 		with open(
 			os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
 		) as reader:
 			input_data = json.load(reader)["data"]
 		return self._create_examples(input_data, "dev")
-
 	def _create_examples(self, input_data, set_type):
 		is_training = set_type == "train"
 		examples = []
@@ -327,7 +299,6 @@ class SquadProcessor(DataProcessor):
 					start_position_character = None
 					answer_text = None
 					answers = []
-
 					is_impossible = qa.get("is_impossible", False)
 					if not is_impossible:
 						if is_training:
@@ -349,12 +320,6 @@ class SquadProcessor(DataProcessor):
 					)
 					examples.append(example)
 		return examples
-class SquadV1Processor(SquadProcessor):
-	train_file = "train-v1.1.json"
-	dev_file = "dev-v1.1.json"
-class SquadV2Processor(SquadProcessor):
-	train_file = "train-v2.0.json"
-	dev_file = "dev-v2.0.json"
 class SquadExample:
 	def __init__(
 		self,
@@ -395,3 +360,39 @@ class SquadExample:
 			self.end_position = char_to_word_offset[
 				min(start_position_character + len(answer_text) - 1, len(char_to_word_offset) - 1)
 			]
+class SquadProposeFeatures:
+	def __init__(
+		self,
+		input_ids,
+		paragraph_len,
+		sub2sent,
+		example_index,
+		unique_id,
+		tokens,
+		qas_id: str = None,
+		encoding: BatchEncoding = None,
+	):
+		self.input_ids = input_ids
+		self.paragraph_len = paragraph_len
+		self.sub2sent = sub2sent # list 
+		self.example_index = example_index
+		self.unique_id = unique_id
+		self.tokens = tokens
+		self.qas_id = qas_id
+		self.encoding = encoding
+class ProposeExample:
+	def __init__(
+		self,
+		squad_features, start_position, end_position, full_tokens , tok_to_orig_index , sent2subword , subword2sents):
+		self.squad_features = squad_features
+		self.start_position = start_position
+		self.end_position = end_position
+		self.tokens = full_tokens
+		self.tok_to_orig_index = tok_to_orig_index
+		self.sent2subword = sent2subword
+		self.subword2sents = subword2sents
+class SquadResult:
+	def __init__(self, unique_id, start_logits, end_logits, start_top_index=None, end_top_index=None, cls_logits=None):
+		self.start_logits = start_logits
+		self.end_logits = end_logits
+		self.unique_id = unique_id
