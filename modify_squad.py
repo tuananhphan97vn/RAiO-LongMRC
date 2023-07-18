@@ -1,4 +1,3 @@
-
 from nltk.tokenize import word_tokenize
 from handle_text_bert import sent_tokenize
 import json
@@ -9,22 +8,16 @@ from nltk.corpus import stopwords
 from collections import Counter
 import numpy as np
 from tqdm import tqdm
-
 from transformers.file_utils import is_tf_available, is_torch_available
 from transformers.models.bert.tokenization_bert import whitespace_tokenize
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase, TruncationStrategy
 from transformers.utils import logging
 from transformers.data.processors.utils import DataProcessor
-
-# Store the tokenizers which insert 2 separators tokens
 MULTI_SEP_TOKENS_TOKENIZERS_SET = {"roberta", "camembert", "bart", "mpnet"}
-
 FILTERWORD = stopwords.words('english')
 punctuations = [',', '.', ':', ';', '?', '(', ')', '[', ']', '&', '!', '*', '@', '#', '$', '%', '\'\'', '\'', '`', '``',
                 '-', '--', '|', '\/']
 FILTERWORD.extend(punctuations)
-# print(FILTERWORD)
-
 if is_torch_available():
 	import torch
 	from torch.utils.data import TensorDataset
@@ -66,28 +59,6 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
 		if best_score is None or score > best_score:
 			best_score = score
 			best_span_index = span_index
-
-	return cur_span_index == best_span_index
-
-def _new_check_is_max_context(doc_spans, cur_span_index, position):
-	"""Check if this is the 'max context' doc span for the token."""
-	# if len(doc_spans) == 1:
-	# return True
-	best_score = None
-	best_span_index = None
-	for (span_index, doc_span) in enumerate(doc_spans):
-		end = doc_span["start"] + doc_span["length"] - 1
-		if position < doc_span["start"]:
-			continue
-		if position > end:
-			continue
-		num_left_context = position - doc_span["start"]
-		num_right_context = end - position
-		score = min(num_left_context, num_right_context) + 0.01 * doc_span["length"]
-		if best_score is None or score > best_score:
-			best_score = score
-			best_span_index = span_index
-
 	return cur_span_index == best_span_index
 
 def _is_whitespace(c):
@@ -98,41 +69,30 @@ def _is_whitespace(c):
 def squad_convert_example_to_features(
 	example, max_seq_length, max_len_context, max_query_length, padding_strategy, is_training
 ):
-
-	#need one object to matching sents vs corresponding words
 	features = []
 	if is_training and not example.is_impossible:
 		# Get start and end position
 		start_position = example.start_position
 		end_position = example.end_position
-
-		# If the answer cannot be found in the text, then skip this example.
 		actual_text = " ".join(example.doc_tokens[start_position : (end_position + 1)])  #answer text 
 		cleaned_answer_text = " ".join(whitespace_tokenize(example.answer_text))
 		if actual_text.find(cleaned_answer_text) == -1:
 			logger.warning(f"Could not find answer: '{actual_text}' vs. '{cleaned_answer_text}'")
 			return []
-
 	tok_to_orig_index = []
 	orig_to_tok_index = []
 	all_doc_tokens = []
-
 	word_to_sent_index = []
-	# sent_to_word_index = [] 
 	original_doc = " ".join(example.doc_tokens)
 	sents = sent_tokenize(original_doc)
-	
 	if sum([len(sent.split()) for sent in sents]) != len(example.doc_tokens):
 		print('erorr tokenize sent ')
 		return 
-
 	current_num_word = 0 
-
 	for i , sent in enumerate(sents):
 		words = sent.split()
 		for word in words :
 			word_to_sent_index.append(i)
-
 	subword2sent = []
 	for (i, token) in enumerate(example.doc_tokens):
 		orig_to_tok_index.append(len(all_doc_tokens))
@@ -166,23 +126,17 @@ def squad_convert_example_to_features(
 		(tok_start_position, tok_end_position) = _improve_answer_span(
 			all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.answer_text
 		)
-
-	#create sent2subword
 	sent2subword = {}
 	for i in range(len(subword2sent)):
 		if subword2sent[i] not in sent2subword:
 			sent2subword[subword2sent[i]] = [i]
 		else:
 			sent2subword[subword2sent[i]].append(i)
-
 	spans = []
 
 	truncated_query = tokenizer.encode(
 		example.question_text, add_special_tokens=False, truncation=True, max_length=max_query_length
 	)
-
-	# Tokenizers who insert 2 SEP tokens in-between <context> & <question> need to have special handling
-	# in the way they compute mask of added tokens.
 	tokenizer_type = type(tokenizer).__name__.replace("Tokenizer", "").lower()
 	sequence_added_tokens = (
 		tokenizer.model_max_length - tokenizer.max_len_single_sentence + 1
@@ -190,24 +144,18 @@ def squad_convert_example_to_features(
 		else tokenizer.model_max_length - tokenizer.max_len_single_sentence
 	)
 	sequence_pair_added_tokens = tokenizer.model_max_length - tokenizer.max_len_sentences_pair
-
 	span_doc_tokens = all_doc_tokens
 	len_doc = len(all_doc_tokens)
 	#split doc to multiple chunk with max len context 
 	contexts = [ all_doc_tokens[i:i+max_len_context] for i in range(0 , len_doc , max_len_context)]
 	subword2sents = [subword2sent[i:i+max_len_context] for i in range(0 , len_doc, max_len_context)]
-
 	for i in range(len(contexts)):
-
 		context = contexts[i] #context of this chunk. We split document to multiple chunks due to limitation of BERT
 		sub2sent = subword2sents[i] #subword 2 sent only in one chunk 
-		# print('sub2sent ' , sub2sent)
-
 		if tokenizer.padding_side == "right": 
 			texts = truncated_query
 			pairs = context 
 			truncation = TruncationStrategy.ONLY_SECOND.value
-
 		encoded_dict = tokenizer.encode_plus(  # TODO(thom) update this logic
 			texts,
 			pairs,
@@ -216,7 +164,6 @@ def squad_convert_example_to_features(
 			max_length=max_seq_length,
 			return_token_type_ids=True,
 		)
-
 		if tokenizer.pad_token_id in encoded_dict["input_ids"]:
 			if tokenizer.padding_side == "right":
 				non_padded_ids = encoded_dict["input_ids"][: encoded_dict["input_ids"].index(tokenizer.pad_token_id)]
@@ -224,31 +171,11 @@ def squad_convert_example_to_features(
 			non_padded_ids = encoded_dict["input_ids"]
 
 		tokens = tokenizer.convert_ids_to_tokens(non_padded_ids)
-
 		encoded_dict["paragraph_len"] = len(context)
 		encoded_dict["tokens"] = tokens
 		encoded_dict['sub2sent'] = sub2sent
-
 		spans.append(encoded_dict)
-
 	for span in spans:
-		# cls_index = span["input_ids"].index(tokenizer.cls_token_id)
-		# p_mask = np.ones_like(span["token_type_ids"])
-		# if tokenizer.padding_side == "right":
-		# 	p_mask[len(truncated_query) + sequence_added_tokens :] = 0
-		# else:
-		# 	p_mask[-len(span["tokens"]) : -(len(truncated_query) + sequence_added_tokens)] = 0
-
-		# pad_token_indices = np.where(span["input_ids"] == tokenizer.pad_token_id)
-		# special_token_indices = np.asarray(
-		# 	tokenizer.get_special_tokens_mask(span["input_ids"], already_has_special_tokens=True)
-		# ).nonzero()
-
-		# p_mask[pad_token_indices] = 1
-		# p_mask[special_token_indices] = 1
-
-		# p_mask[cls_index] = 0
-
 		features.append(
 			SquadProposeFeatures(
 				span["input_ids"],
@@ -267,15 +194,10 @@ def squad_convert_example_to_features(
 		end_position = tok_end_position + 1 
 
 	propose_example = ProposeExample(features , start_position , end_position , all_doc_tokens , tok_to_orig_index , sent2subword , subword2sents)
-
 	return propose_example
-
-
 def squad_convert_example_to_features_init(tokenizer_for_convert: PreTrainedTokenizerBase):
 	global tokenizer
 	tokenizer = tokenizer_for_convert
-
-
 def squad_convert_examples_to_features(
 	examples,
 	tokenizer,
@@ -288,42 +210,8 @@ def squad_convert_examples_to_features(
 	threads=1,
 	tqdm_enabled=True,
 ):
-	"""
-	Converts a list of examples into a list of features that can be directly given as input to a model. It is
-	model-dependant and takes advantage of many of the tokenizer's features to create the model's inputs.
-
-	Args:
-		examples: list of :class:`~transformers.data.processors.squad.SquadExample`
-		tokenizer: an instance of a child of :class:`~transformers.PreTrainedTokenizer`
-		max_seq_length: The maximum sequence length of the inputs.
-		doc_stride: The stride used when the context is too large and is split across several features.
-		max_query_length: The maximum length of the query.
-		is_training: whether to create features for model evaluation or model training.
-		padding_strategy: Default to "max_length". Which padding strategy to use
-		return_dataset: Default False. Either 'pt' or 'tf'.
-			if 'pt': returns a torch.data.TensorDataset, if 'tf': returns a tf.data.Dataset
-		threads: multiple processing threads.
-
-	Returns:
-		list of :class:`~transformers.data.processors.squad.SquadFeatures`
-
-	Example::
-
-		processor = SquadV2Processor()
-		examples = processor.get_dev_examples(data_dir)
-
-		features = squad_convert_examples_to_features(
-			examples=examples,
-			tokenizer=tokenizer,
-			max_seq_length=args.max_seq_length,
-			doc_stride=args.doc_stride,
-			max_query_length=args.max_query_length,
-			is_training=not evaluate,
-		)
-	"""
 	# Defining helper methods
 	features = []
-
 	threads = min(threads, cpu_count())
 	with Pool(threads, initializer=squad_convert_example_to_features_init, initargs=(tokenizer,)) as p:
 		annotate_ = partial(
@@ -360,43 +248,150 @@ def squad_convert_examples_to_features(
 		example_index += 1
 	features = new_features
 	del new_features
-	# if return_dataset == "pt":
-	# 	if not is_torch_available():
-	# 		raise RuntimeError("PyTorch must be installed to return a PyTorch dataset.")
-
-	# 	# Convert to Tensors and build dataset
-	# 	all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-	# 	all_attention_masks = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
-	# 	all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
-	# 	all_cls_index = torch.tensor([f.cls_index for f in features], dtype=torch.long)
-	# 	all_p_mask = torch.tensor([f.p_mask for f in features], dtype=torch.float)
-	# 	all_is_impossible = torch.tensor([f.is_impossible for f in features])
-	# 	all_sentid = [f.sentid for f in features]
-
-
 	if not is_training:
-		# all_feature_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
-		# dataset = TensorDataset(
-		# 	all_input_ids, all_attention_masks, all_token_type_ids, all_feature_index, all_cls_index, all_p_mask
-		# )
 		return features , examples
 	else:
-		# all_start_positions = torch.tensor([f.start_position for f in features], dtype=torch.long)
-		# all_end_positions = torch.tensor([f.end_position for f in features], dtype=torch.long)
-		# dataset = TensorDataset(
-		# 	all_input_ids,
-		# 	all_attention_masks,
-		# 	all_token_type_ids,
-		# 	all_start_positions,
-		# 	all_end_positions,
-		# 	all_cls_index,
-		# 	all_p_mask,
-		# 	all_is_impossible,
-		# )
-
-# 	return features, dataset , all_sentid
-# else:
-# 	return features
 		return features
+class SquadProcessor(DataProcessor):
+	train_file = None
+	dev_file = None
+	def _get_example_from_tensor_dict(self, tensor_dict, evaluate=False):
+		if not evaluate:
+			answer = tensor_dict["answers"]["text"][0].numpy().decode("utf-8")
+			answer_start = tensor_dict["answers"]["answer_start"][0].numpy()
+			answers = []
+		else:
+			answers = [
+				{"answer_start": start.numpy(), "text": text.numpy().decode("utf-8")}
+				for start, text in zip(tensor_dict["answers"]["answer_start"], tensor_dict["answers"]["text"])
+			]
+			answer = None
+			answer_start = None
+		return SquadExample(
+			qas_id=tensor_dict["id"].numpy().decode("utf-8"),
+			question_text=tensor_dict["question"].numpy().decode("utf-8"),
+			context_text=tensor_dict["context"].numpy().decode("utf-8"),
+			answer_text=answer,
+			start_position_character=answer_start,
+			title=tensor_dict["title"].numpy().decode("utf-8"),
+			answers=answers,
+		)
+	def get_examples_from_dataset(self, dataset, evaluate=False):
+		if evaluate:
+			dataset = dataset["validation"]
+		else:
+			dataset = dataset["train"]
 
+		examples = []
+		for tensor_dict in tqdm(dataset):
+			examples.append(self._get_example_from_tensor_dict(tensor_dict, evaluate=evaluate))
+		return examples
+	def get_train_examples(self, data_dir, filename=None):
 
+		if data_dir is None:
+			data_dir = ""
+
+		if self.train_file is None:
+			raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
+
+		with open(
+			os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
+		) as reader:
+			input_data = json.load(reader)["data"]
+		return self._create_examples(input_data, "train")
+
+	def get_dev_examples(self, data_dir, filename=None):
+
+		if data_dir is None:
+			data_dir = ""
+
+		if self.dev_file is None:
+			raise ValueError("SquadProcessor should be instantiated via SquadV1Processor or SquadV2Processor")
+
+		with open(
+			os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
+		) as reader:
+			input_data = json.load(reader)["data"]
+		return self._create_examples(input_data, "dev")
+
+	def _create_examples(self, input_data, set_type):
+		is_training = set_type == "train"
+		examples = []
+		for entry in tqdm(input_data):
+			# title = entry["title"]
+			for paragraph in entry["paragraphs"]:
+				context_text = paragraph["context"]
+				for qa in paragraph["qas"]:
+					qas_id = qa["id"]
+					question_text = qa["question"]
+					start_position_character = None
+					answer_text = None
+					answers = []
+
+					is_impossible = qa.get("is_impossible", False)
+					if not is_impossible:
+						if is_training:
+							answer = qa["answers"][0]
+							answer_text = answer["text"]
+							start_position_character = answer["answer_start"]
+						else:
+							answers = qa["answers"]
+
+					example = SquadExample(
+						qas_id=qas_id,
+						question_text=question_text,
+						context_text=context_text,
+						answer_text=answer_text,
+						start_position_character=start_position_character,
+						title="empty",
+						is_impossible=is_impossible,
+						answers=answers,
+					)
+					examples.append(example)
+		return examples
+class SquadV1Processor(SquadProcessor):
+	train_file = "train-v1.1.json"
+	dev_file = "dev-v1.1.json"
+class SquadV2Processor(SquadProcessor):
+	train_file = "train-v2.0.json"
+	dev_file = "dev-v2.0.json"
+class SquadExample:
+	def __init__(
+		self,
+		qas_id,
+		question_text,
+		context_text,
+		answer_text,
+		start_position_character,
+		title,
+		answers=[],
+		is_impossible=False,
+	):
+		self.qas_id = qas_id
+		self.question_text = question_text
+		self.context_text = context_text
+		self.answer_text = answer_text
+		self.title = title
+		self.is_impossible = is_impossible
+		self.answers = answers
+		self.start_position, self.end_position = 0, 0
+		doc_tokens = []
+		char_to_word_offset = []
+		prev_is_whitespace = True
+		for c in self.context_text:
+			if _is_whitespace(c):
+				prev_is_whitespace = True
+			else:
+				if prev_is_whitespace:
+					doc_tokens.append(c)
+				else:
+					doc_tokens[-1] += c
+				prev_is_whitespace = False
+			char_to_word_offset.append(len(doc_tokens) - 1)
+		self.doc_tokens = doc_tokens 
+		self.char_to_word_offset = char_to_word_offset
+		if start_position_character is not None and not is_impossible:
+			self.start_position = char_to_word_offset[start_position_character]
+			self.end_position = char_to_word_offset[
+				min(start_position_character + len(answer_text) - 1, len(char_to_word_offset) - 1)
+			]
