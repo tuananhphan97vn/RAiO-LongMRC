@@ -61,31 +61,6 @@ class MultiBlockSelfAttention(nn.Module):
 			sents_hidden = self.multi_layernorm[i](sents_hidden + self.multi_selfattentionblock[i](sents_hidden) )
 		return sents_hidden
 
-class SelfAttentionSpareBlock(nn.Module):
-
-	def __init__(self, sent_dim , device ):
-		super().__init__()
-		self.sent_dim = sent_dim
-		self.device = device 
-		self.W_q = nn.Linear(self.sent_dim , self.sent_dim) # query matrix
-		self.W_k = nn.Linear(self.sent_dim , self.sent_dim) # key matrix
-		self.W_v = nn.Linear(self.sent_dim , self.sent_dim) # value matrix
-
-	def forward(self, sent_embed , adj_tensor):
-
-		sent_query = self.W_q(sent_embed) #shape (N_sent , sent dim)
-		sent_key = self.W_k(sent_embed)
-		sent_value = self.W_v(sent_embed) #shape (N_sent , sent dim )
-
-		z = 1. / math.sqrt(self.sent_dim) * ( torch.matmul( sent_query , torch.transpose(sent_key , 0 , 1 )) ) # shape (N_sent , N_sent )
-		spare_z = z * adj_tensor # shape (N_sent , N_sent ) #spare tensor with many value equal 0 
-		spare_z = torch.where(spare_z == 0. , torch.tensor(-10000, dtype = spare_z.dtype).to(self.device) , spare_z) # if spare_z == 0 , -- > -inf -- > softmax = 0  
-
-		attention_matrix = torch.nn.functional.softmax(spare_z , dim = 1) #shape (N_sent , N_sent)
-		result = torch.matmul(attention_matrix , sent_value) #shape (N_sent , sent dim) 
-		
-		return torch.nn.functional.relu(result) #shape (N_sent, sent dim)
-
 class CrossAttentionBlock(nn.Module):
 
 	def __init__(self, sent_dim ):
@@ -106,7 +81,6 @@ class CrossAttentionBlock(nn.Module):
 		result = torch.matmul(attention_matrix , ques_val) #shape (N_sent , sent dim )
 
 		return torch.nn.functional.relu(result) #shape (N_sent, sent dim)
-
 
 class Bottom_up_embed(nn.Module):
 
@@ -229,8 +203,6 @@ class Sent2SentBlock(nn.Module):
 		result = self.residual_norm(original , result) #N sent, sent dim 
 		result = torch.split(result , list_num_sent) # list of tensor , tenshor shape (num sent in each chunk, sent dim )
 		return result 
-
-
 class Word2SentBlock(nn.Module):
 
 	def __init__(self, sent_dim , device):
@@ -270,8 +242,6 @@ class Word2SentBlock(nn.Module):
 		return sent_hids  
 
 	def forward(self, words_emb, bound_passages , sent2subword):
-		#words emb: tensor shape (N-word , word dim )
-		#sent 2 subword is dict, key = sent id, value = order of word that appear in this sentence
 		output = self.pool_sents(words_emb , bound_passages , sent2subword) #shape (N_sent , sent dim)
 		return output
 class QuesSent(nn.Module):
@@ -283,8 +253,6 @@ class QuesSent(nn.Module):
 		self.ques_sent_att = MultiBlockSelfAttention(self.sent_dim , self.n_iter)
 
 	def forward(self, ques_emb , sents_hidden):
-		#ques emb shape (N_chunk , n_word , word dim )
-		#sents emb shape ( N_sent, hidden dim )
 		ques_len = ques_emb.shape[1]
 		ques_tensor = torch.mean(ques_emb , dim = 0) # (n_word , word dim)
 		# print(ques_tensor.shape)
@@ -308,3 +276,4 @@ class QuesSentAlpha(nn.Module):
 		z = torch.mm(ques_query , sent_key.T) #shape (1, n_sent)
 		z = torch.nn.functional.softmax(z , dim = 1) #shape (1 , n _sent)
 		return z.squeeze(0) # (N_sent)
+
