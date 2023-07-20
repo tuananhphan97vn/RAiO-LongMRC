@@ -9,5 +9,5 @@ We inherit partly code from Hugging Face. It is a huge advantage if you are fami
 
 3. If you encounter the 'Out of memory' problem, please  try the GPU with larger VRAM
 
-#Citation
+# Citation
 If our code is useful for you, please cite my paper: Read-All-in-Once (RAiO): Multi-layer Contextual Architecture for Long-Text Machine Reading Comprehension. 
