@@ -5,5 +5,5 @@ We inherit partly code from Hugging Face. It is a huge advantage if you are fami
 # Train / Test:
 1. Run file bash: run.sh. 
 
-2. Note: All of parameters can be understand easily. The reader should read thoroughly our paper to obtain the best params, and work with Hugging Face code style in advance to run our code. 
+2. Note: All of parameters can be understood easily. The reader should read thoroughly our paper to obtain the best params, and work with Hugging Face code style in advance to run our code. 
 
