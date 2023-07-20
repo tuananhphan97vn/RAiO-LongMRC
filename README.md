@@ -8,3 +8,6 @@ We inherit partly code from Hugging Face. It is a huge advantage if you are fami
 2. Note: All of parameters can be understood easily. The reader are suggested to read our paper thoroughly to obtain the best params, and work with Hugging Face code style in advance to run our code. 
 
 3. If you encounter the 'Out of memory' problem, please  try the GPU with larger VRAM
+
+#Citation
+If our code is useful for you, please cite my paper: Read-All-in-Once (RAiO): Multi-layer Contextual Architecture for Long-Text Machine Reading Comprehension. 
